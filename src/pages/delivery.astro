@@ -1,0 +1,9 @@
+---
+import Base from '../layouts/Base.astro';
+import Delivery from '../components/Delivery.jsx';
+import '../styles/delivery.css';
+const fonts = ["https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&family=Bodoni+Moda:ital,wght@0,500;0,700;1,500&family=Dela+Gothic+One&display=swap"];
+---
+<Base title="Delivery, pickup and returns" fonts={fonts}>
+  <Delivery client:only="react" />
+</Base>

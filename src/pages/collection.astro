@@ -1,0 +1,9 @@
+---
+import Base from '../layouts/Base.astro';
+import Collection from '../components/Collection.jsx';
+import '../styles/collection.css';
+const fonts = ["https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&family=Bodoni+Moda:ital,wght@0,500;0,700;1,500&family=Dela+Gothic+One&display=swap"];
+---
+<Base title="The Place Collection" fonts={fonts}>
+  <Collection client:only="react" />
+</Base>

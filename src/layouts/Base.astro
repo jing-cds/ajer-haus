@@ -1,0 +1,25 @@
+---
+const { title = 'Ajer Haus', fonts = [] } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    {fonts.map((href) => <link rel="stylesheet" href={href} />)}
+    <!--
+      Logo face: Grante (Adobe Fonts). Add your Adobe Fonts kit here, e.g.
+      <link rel="stylesheet" href="https://use.typekit.net/YOUR_KIT_ID.css" />
+      Until then the pages fall back to Dela Gothic One.
+    -->
+    <style is:global>
+      html, body { margin: 0; }
+    </style>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
