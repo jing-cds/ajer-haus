@@ -13,5 +13,16 @@
     "astro": "^7.4.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
-  }
+  },
+  "description": "Astro site for Ajer Haus, a Melbourne scent house (memory, place and scent). This is the second design iteration: Grante logo face, green/turquoise/blue spring palette, plainer sections.",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jing-cds/ajer-haus.git"
+  },
+  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/jing-cds/ajer-haus/issues"
+  },
+  "homepage": "https://github.com/jing-cds/ajer-haus#readme"
 }

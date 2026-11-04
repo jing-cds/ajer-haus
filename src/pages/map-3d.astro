@@ -1,0 +1,11 @@
+---
+import Base from '../layouts/Base.astro';
+import ScentMap from '../components/ScentMap.jsx';
+import '../styles/site.css';
+import '../styles/scentmap.css';
+const fonts = ["https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&family=Bodoni+Moda:ital,wght@0,500;0,700;1,500&family=Dela+Gothic+One&display=swap"];
+---
+<Base title="Ajer Haus Scent Map (3D)" fonts={fonts}>
+  <div class="wrap" style="padding-top:20px"><a href="/" class="tlink">← Back to home</a></div>
+  <ScentMap client:only="react" />
+</Base>

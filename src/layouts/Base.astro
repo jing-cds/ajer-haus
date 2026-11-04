@@ -1,4 +1,5 @@
 ---
+import SiteOverlays from '../components/SiteOverlays.jsx';
 const { title = 'Ajer Haus', fonts = [] } = Astro.props;
 ---
 <!doctype html>
@@ -21,5 +22,6 @@ const { title = 'Ajer Haus', fonts = [] } = Astro.props;
   </head>
   <body>
     <slot />
+    <SiteOverlays client:only="react" />
   </body>
 </html>
