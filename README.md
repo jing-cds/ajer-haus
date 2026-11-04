@@ -33,3 +33,9 @@ Each `.astro` page wraps one React island in `src/components/` (`client:only="re
 - **Duplication:** each island carries its own copy of the shared header, footer and illustration data. Extracting these into shared components is the natural next step.
 - **Rendering:** islands render in the browser only, so the pages ship little static HTML. Switch to `client:load` and guard `window` use if you need server-rendered markup.
 - The silver Collection and Delivery variants are not included.
+
+## Pre-order payment
+Open `src/components/PreorderForm.jsx` and set `PAYMENT_URL` to your payment link (Stripe Payment Link, Shopify checkout, etc.). Until it is set, the form validates and shows a "payment not switched on yet" message.
+
+## Suggest-a-place
+The map's suggestion form is local-only for now (see `submitSuggestion` in `src/components/ScentMap.jsx`). Point it at a form endpoint to collect real suggestions.
