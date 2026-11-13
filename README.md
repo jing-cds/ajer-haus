@@ -34,8 +34,23 @@ Each `.astro` page wraps one React island in `src/components/` (`client:only="re
 - **Rendering:** islands render in the browser only, so the pages ship little static HTML. Switch to `client:load` and guard `window` use if you need server-rendered markup.
 - The silver Collection and Delivery variants are not included.
 
-## Pre-order payment
-Open `src/components/PreorderForm.jsx` and set `PAYMENT_URL` to your payment link (Stripe Payment Link, Shopify checkout, etc.). Until it is set, the form validates and shows a "payment not switched on yet" message.
+## Backend
+
+Checkout, stock, the newsletter/notify-me signup, and a minimal `/admin` panel
+are backed by Astro API routes (Vercel Serverless Functions, in `api/` and
+`src/server/`), Prisma + Postgres, Stripe Checkout, and Resend. Copy
+`.env.example` to `.env.local` and fill it in — `scripts/setup-infra.sh` is an
+interactive wizard that walks through provisioning each piece (Neon schema +
+role, a Stripe account, Resend, the admin secrets, and a Vercel project) and
+writes the values to `.env.local` as you go.
+
+```sh
+pnpm db:push    # create tables from prisma/schema.prisma
+pnpm db:seed    # seed the seven Place Collection products + the Shrine batch
+pnpm test       # mocked unit tests
+pnpm test:integration  # real-Postgres tests (needs TEST_DATABASE_URL)
+pnpm test:e2e   # Playwright checkout smoke test (needs a Stripe test key)
+```
 
 ## Suggest-a-place
 The map's suggestion form is local-only for now (see `submitSuggestion` in `src/components/ScentMap.jsx`). Point it at a form endpoint to collect real suggestions.

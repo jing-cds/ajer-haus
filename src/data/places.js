@@ -1,10 +1,12 @@
 // The seven places of The Place Collection.
 // status: 'preorder' (open now) | 'soon' (foreshadowed, not yet poured)
+// slug matches the Product.slug seeded in prisma/seed.ts — used when
+// calling /api/subscribe (notify-me) or /api/create-checkout-session.
 // x / y: position on the 1600 x 1200 map plane.
 export const PREORDER_URL = '/pre-order';
-export const PLACES = [
+const RAW_PLACES = [
   {
-    id: 'shrine', name: 'Shrine of Remembrance', status: 'preorder', price: 26,
+    id: 'shrine', name: 'Shrine of Remembrance', status: 'preorder', slug: 'shrine-of-remembrance', price: 26,
     x: 860, y: 650, bg: '#2C187A', fg: '#FAD7CA', lx: 1010, ly: 870, short: 'Shrine of Remembrance', leaf: '#D95A25', wash: '#DAD5F2',
     place: 'The Shrine, St Kilda Rd, Melbourne',
     memory: 'A quiet hour on the steps, with something sweet on the air.',
@@ -12,7 +14,7 @@ export const PLACES = [
     items: ['frangipani', 'oud', 'sandalwood', 'cedar'],
   },
   {
-    id: 'hosier', name: 'Love Affair at Hosier', status: 'soon',
+    id: 'hosier', name: 'Love Affair at Hosier', status: 'soon', slug: 'love-affair-at-hosier',
     x: 920, y: 285, bg: '#D61C55', fg: '#FFD310', lx: 930, ly: 385, short: 'The laneway', leaf: '#5A1A12', wash: '#F4CDD8',
     place: 'Hosier Lane, Melbourne CBD',
     memory: 'A lane, a late night, smoke still in your jacket.',
@@ -21,7 +23,7 @@ export const PLACES = [
     items: ['woodsmoke', 'tobacco', 'whiskey'],
   },
   {
-    id: 'morning', name: 'Melbourne Morning', status: 'soon',
+    id: 'morning', name: 'Melbourne Morning', status: 'soon', slug: 'melbourne-morning',
     x: 1150, y: 225, bg: '#901B0B', fg: '#FAD7CA', lx: 560, ly: 250, short: 'The market', leaf: '#D95A25', wash: '#EBC9C0',
     place: '[Place to confirm]',
     memory: 'Wattleseed warmth before the city wakes up.',
@@ -30,7 +32,7 @@ export const PLACES = [
     items: ['wattle', 'seedpod', 'sun'],
   },
   {
-    id: 'ocean', name: 'The Great Ocean Road', status: 'soon',
+    id: 'ocean', name: 'The Great Ocean Road', status: 'soon', slug: 'the-great-ocean-road',
     x: 170, y: 930, bg: '#3A6E67', fg: '#FFA59F', lx: 190, ly: 930, short: 'The coast', leaf: '#D95A25', wash: '#CFE0DB',
     place: 'Great Ocean Road, Victoria',
     memory: 'Windows down, salt on everything.',
@@ -39,7 +41,7 @@ export const PLACES = [
     items: ['salt', 'sage', 'eucalyptus', 'jasmine'],
   },
   {
-    id: 'fed', name: 'Night Out at Fed Square', status: 'soon',
+    id: 'fed', name: 'Night Out at Fed Square', status: 'soon', slug: 'night-out-at-fed-square',
     x: 680, y: 415, bg: '#C3AFF3', fg: '#FAEDB0', lx: 1100, ly: 525, short: 'The square', leaf: '#5A1A12', wash: '#E4DBF7',
     place: 'Federation Square, Melbourne CBD',
     memory: 'Lime in the glass and the square still humming.',
@@ -48,7 +50,7 @@ export const PLACES = [
     items: ['lime', 'coconut'],
   },
   {
-    id: 'rain', name: "It's About to Rain", status: 'soon',
+    id: 'rain', name: "It's About to Rain", status: 'soon', slug: 'its-about-to-rain',
     x: 1230, y: 870, bg: '#6199C4', fg: '#C5DF00', lx: 1290, ly: 890, short: 'The gardens', leaf: '#5A1A12', wash: '#D3E3F2',
     place: '[Place to confirm]',
     memory: 'That earthy breath of air just before the sky breaks.',
@@ -57,7 +59,7 @@ export const PLACES = [
     items: ['lemon', 'sandalwood', 'raindrops'],
   },
   {
-    id: 'yarra', name: 'Yarra at Dusk', status: 'soon',
+    id: 'yarra', name: 'Yarra at Dusk', status: 'soon', slug: 'yarra-at-dusk',
     x: 1320, y: 425, bg: '#EDBA4C', fg: '#E45417', lx: 1420, ly: 535, short: 'The river', leaf: '#5A1A12', wash: '#F6E1B6',
     place: 'The Yarra, Melbourne',
     memory: 'Eucalyptus on the breeze as the river goes gold.',
@@ -66,3 +68,12 @@ export const PLACES = [
     items: ['eucalyptus', 'fern', 'wildflower'],
   },
 ];
+
+// Several components (Shop.jsx, Collection.jsx) read `p.live`/`p.pre`
+// booleans that never existed on the entries above (they only ever had
+// `status`) — a pre-existing mismatch that made every "Available now /
+// Pre-order / Coming soon" badge always evaluate to "Coming soon". Derived
+// here, once, from the single `status` source of truth, so every existing
+// call site starts reading the right value instead of being rewritten
+// individually.
+export const PLACES = RAW_PLACES.map((p) => ({ ...p, live: p.status === 'preorder', pre: false }));

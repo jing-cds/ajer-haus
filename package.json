@@ -5,14 +5,44 @@
   "private": true,
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview"
+    "build": "prisma generate && astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "postinstall": "prisma generate",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx prisma/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "DATABASE_URL=\"$TEST_DATABASE_URL\" sh -c 'prisma db push --skip-generate --accept-data-loss && vitest run --config vitest.integration.config.ts'",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@astrojs/react": "^7.1.0",
+    "@neondatabase/serverless": "^1.1.0",
+    "@prisma/adapter-neon": "^7.10.0",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "astro": "^7.4.1",
+    "pg": "^8.13.1",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "resend": "^6.27.0",
+    "stripe": "^22.6.2",
+    "ws": "^8.21.3",
+    "zod": "^4.6.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/pg": "^8.11.10",
+    "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^5.0.0",
+    "prisma": "^7.10.0",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.2",
+    "vitest": "^5.0.0"
   },
   "description": "Astro site for Ajer Haus, a Melbourne scent house (memory, place and scent). This is the second design iteration: Grante logo face, green/turquoise/blue spring palette, plainer sections.",
   "main": "index.js",

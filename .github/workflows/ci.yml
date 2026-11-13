@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Unit tests with coverage
+        run: pnpm test:coverage
+        env:
+          RESEND_API_KEY: 're_ci_mock_key'
+
+      - name: Typecheck Astro & TypeScript
+        run: npx astro check
+
+      - name: Build Astro project
+        run: pnpm build
+        env:
+          # A real-looking Neon URL so `prisma generate` + the build's
+          # module graph resolve cleanly; nothing is actually queried at
+          # build time (the site builds static, API routes are separate
+          # Vercel Functions bundled as-is).
+          DATABASE_URL: 'postgresql://ci_mock:ci_mock@ep-ci-mock.ap-southeast-2.aws.neon.tech/ajer_haus_ci?sslmode=require'
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ajer_haus_integration
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # A throwaway container Postgres, torn down at the end of this job —
+      # never Unstitch's shared Neon project. See tests/integration/helpers.ts.
+      TEST_DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/ajer_haus_integration?sslmode=disable'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+
+      - name: Real-database integration tests (concurrency, webhook idempotency)
+        run: pnpm test:integration
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: integration
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ajer_haus_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/ajer_haus_e2e?sslmode=disable'
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+      SESSION_SECRET: 'ci-e2e-session-secret'
+      ADMIN_PASSWORD: 'ci-e2e-admin-password'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm db:push
+      - run: pnpm db:seed
+      - run: npx playwright install --with-deps chromium
+
+      - name: Playwright smoke test (add to cart -> Stripe test checkout -> success)
+        run: pnpm test:e2e

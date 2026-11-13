@@ -1,9 +1,14 @@
 // Shop constants shared by the cart drawer and the product page.
-// TODO: paste your payment link here (Stripe Payment Link, Shopify checkout, etc).
-// Query string appended: ?qty=&prefilled_email=&method=
-export const PAYMENT_URL = '';
-export const DELIVERY_FEE = 10.2;
-export const FREE_OVER = 75;
+// Checkout itself now goes through /api/create-checkout-session (Stripe) —
+// see src/components/SiteOverlays.jsx's cart submit handler.
+import { DELIVERY_FEE_CENTS, FREE_DELIVERY_OVER_CENTS } from '../lib/delivery.js';
+
+export const PRODUCT_SLUG = 'shrine-of-remembrance';
+// Dollars for display only — src/lib/delivery.ts (cents) is the one place
+// that knows the actual fee/threshold; the real charge always comes from
+// resolveDeliveryFeeCents on the server, never from this display copy.
+export const DELIVERY_FEE = DELIVERY_FEE_CENTS / 100;
+export const FREE_OVER = FREE_DELIVERY_OVER_CENTS / 100;
 export const MAX_QTY = 12;
 export const CONTACT_EMAIL = 'hello@ajerhaus.com';
 export const ACK_OF_COUNTRY =

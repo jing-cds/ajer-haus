@@ -1,0 +1,67 @@
+// src/server/order-lookup.ts
+// GET ?token=... -> verifies a signed magic-link token (src/lib/
+// signedToken.ts, kind: 'order-lookup', { orderId }) and returns sanitized
+// order detail. No password or account involved. Issued by
+// api/stripe-webhook.ts in the order confirmation email.
+import { sendJson } from '../lib/apiHelper.js';
+import { verify } from '../lib/signedToken.js';
+import defaultPrisma from '../lib/prisma.js';
+
+export const ORDER_INCLUDE = {
+  items: { include: { product: { select: { name: true } } } },
+  deliveryAddress: true,
+};
+
+export function sanitizeOrder(order: any): any {
+  return {
+    orderNumber: order.orderNumber,
+    status: order.status,
+    totalCents: order.totalCents,
+    currency: order.currency,
+    createdAt: order.createdAt,
+    trackingNumber: order.trackingNumber || null,
+    items: order.items.map((it: any) => ({
+      productName: it.product?.name || 'Item',
+      quantity: it.quantity,
+      lineTotalCents: it.lineTotalCents,
+    })),
+    deliveryAddress: order.deliveryAddress
+      ? {
+          recipientName: order.deliveryAddress.recipientName,
+          line1: order.deliveryAddress.line1,
+          line2: order.deliveryAddress.line2,
+          suburb: order.deliveryAddress.suburb,
+          state: order.deliveryAddress.state,
+          postcode: order.deliveryAddress.postcode,
+          country: order.deliveryAddress.country,
+        }
+      : null,
+  };
+}
+
+export default async function handler(req: any, res: any, deps: { prisma?: any } = {}): Promise<any> {
+  const prisma = deps.prisma ?? defaultPrisma;
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    return sendJson(res, 405, { error: 'Method not allowed' });
+  }
+  if (!prisma) return sendJson(res, 503, { error: 'Not configured' });
+
+  const { searchParams } = new URL(req.url, 'http://placeholder.local');
+  const token = searchParams.get('token');
+  if (!token) return sendJson(res, 400, { error: 'Missing token.' });
+
+  const payload = verify(token);
+  if (!payload || payload.kind !== 'order-lookup' || !payload.orderId) {
+    return sendJson(res, 401, { error: 'This link has expired or is invalid.' });
+  }
+
+  try {
+    const order = await prisma.order.findUnique({ where: { id: payload.orderId }, include: ORDER_INCLUDE });
+    if (!order) return sendJson(res, 404, { error: 'Order not found.' });
+    return sendJson(res, 200, { order: sanitizeOrder(order) });
+  } catch (err) {
+    console.error('[order-lookup] Lookup failed:', err);
+    return sendJson(res, 500, { error: 'Unable to load order.' });
+  }
+}

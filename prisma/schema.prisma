@@ -1,0 +1,282 @@
+// Ajer Haus's own Prisma schema, mirroring Unstitch's patterns (snake_case
+// @@map'd tables, gen_random_uuid() ids, cents as Int) but a much smaller
+// model set — one SKU at a time, no per-unit serialization/digital passport.
+//
+// Isolation: these tables live in their own Postgres schema (`ajer_haus`,
+// not `public`) inside the same Neon project Unstitch uses, behind a
+// Postgres role GRANTed access to only this schema. See
+// scripts/setup-infra.sh for how that's set up — this file alone can't
+// provision that; `multiSchema` just tells Prisma to write/read
+// `ajer_haus.*` instead of `public.*`.
+//
+// No `url` here, same as Unstitch's schema.prisma — the actual connection
+// string is handed to the Neon driver adapter at runtime (see
+// src/lib/prisma.ts), not read by the Prisma CLI's default .env convention.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["ajer_haus"]
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum BatchStatus {
+  UPCOMING
+  LIVE
+  SOLD_OUT
+  ARCHIVED
+
+  @@map("batch_status")
+  @@schema("ajer_haus")
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  PACKED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  REFUNDED
+
+  @@map("order_status")
+  @@schema("ajer_haus")
+}
+
+enum DeliveryMethod {
+  DELIVERY // Victoria-only courier delivery, flat fee
+  PICKUP // Melbourne CBD pickup, free
+
+  @@map("delivery_method")
+  @@schema("ajer_haus")
+}
+
+enum PaymentStatus {
+  SUCCEEDED
+  FAILED
+  REFUNDED
+
+  @@map("payment_status")
+  @@schema("ajer_haus")
+}
+
+enum ReservationStatus {
+  ACTIVE
+  RELEASED // expired, or checkout session errored/expired before payment
+  CONVERTED // payment succeeded, became an Order
+
+  @@map("reservation_status")
+  @@schema("ajer_haus")
+}
+
+// ---------------------------------------------------------------------------
+// Products — one row per scent, including the six not-yet-available ones,
+// so Subscriber.productId ("notify me") has something to point at.
+// ---------------------------------------------------------------------------
+
+model Product {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String  @unique @db.VarChar(160)
+  sku         String  @unique @db.VarChar(40)
+  name        String  @db.VarChar(200)
+  tagline     String? @db.VarChar(280)
+  description String?
+
+  priceCents Int    @map("price_cents")
+  currency   String @default("AUD") @db.VarChar(3)
+  imageUrl   String? @map("image_url")
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  batches     Batch[]
+  orderItems  OrderItem[]
+  subscribers Subscriber[]
+
+  @@map("products")
+  @@schema("ajer_haus")
+}
+
+// ---------------------------------------------------------------------------
+// Batches — one pre-order production run of a Product. Ajer Haus's
+// equivalent of Unstitch's Drop, minus individually serialized Unit rows:
+// stock here is just a counter, decremented via Reservation at checkout
+// time and permanently committed once a Payment succeeds.
+// ---------------------------------------------------------------------------
+
+model Batch {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId  String      @db.Uuid @map("product_id")
+  product    Product     @relation(fields: [productId], references: [id])
+  batchCode  String      @map("batch_code") @db.VarChar(20) // e.g. "B001"
+  totalUnits Int         @map("total_units")
+  status     BatchStatus @default(UPCOMING)
+  releaseAt  DateTime?   @map("release_at")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  reservations Reservation[]
+  orderItems   OrderItem[]
+
+  @@unique([productId, batchCode], map: "batches_product_batchcode_uq")
+  @@map("batches")
+  @@schema("ajer_haus")
+}
+
+// ---------------------------------------------------------------------------
+// Reservations — soft-hold on Batch stock during the Stripe Checkout
+// session window. See src/lib/inventory.ts for the concurrency-safe
+// claim/release logic this backs (locks the Batch row, checks
+// totalUnits - sum(active reservations) - sum(sold OrderItems) atomically).
+// ---------------------------------------------------------------------------
+
+model Reservation {
+  id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batchId   String            @db.Uuid @map("batch_id")
+  batch     Batch             @relation(fields: [batchId], references: [id])
+  quantity  Int
+  status    ReservationStatus @default(ACTIVE)
+  expiresAt DateTime          @map("expires_at")
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  @@index([batchId, status], map: "reservations_batch_status_idx")
+  @@map("reservations")
+  @@schema("ajer_haus")
+}
+
+// ---------------------------------------------------------------------------
+// Customers + delivery addresses
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email          String   @unique @db.VarChar(320)
+  name           String?  @db.VarChar(200)
+  phone          String?  @db.VarChar(40)
+  marketingOptIn Boolean  @default(false) @map("marketing_opt_in")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  addresses Address[]
+  orders    Order[]
+
+  @@map("customers")
+  @@schema("ajer_haus")
+}
+
+model Address {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId    String   @db.Uuid @map("customer_id")
+  customer      Customer @relation(fields: [customerId], references: [id])
+  recipientName String   @map("recipient_name") @db.VarChar(200)
+  line1         String   @db.VarChar(200)
+  line2         String?  @db.VarChar(200)
+  suburb        String   @db.VarChar(120)
+  state         String   @default("VIC") @db.VarChar(10)
+  postcode      String   @db.VarChar(10)
+  country       String   @default("AU") @db.VarChar(2)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  orders Order[]
+
+  @@map("addresses")
+  @@schema("ajer_haus")
+}
+
+// ---------------------------------------------------------------------------
+// Orders + order items + payments
+// ---------------------------------------------------------------------------
+
+model Order {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderNumber String         @unique @map("order_number") @db.VarChar(30) // e.g. "AH-2026-000123"
+  customerId  String         @db.Uuid @map("customer_id")
+  customer    Customer       @relation(fields: [customerId], references: [id])
+  status      OrderStatus    @default(PENDING_PAYMENT)
+
+  deliveryMethod    DeliveryMethod @map("delivery_method")
+  deliveryAddressId String?        @db.Uuid @map("delivery_address_id")
+  deliveryAddress   Address?       @relation(fields: [deliveryAddressId], references: [id])
+
+  subtotalCents    Int    @map("subtotal_cents")
+  deliveryFeeCents Int    @default(0) @map("delivery_fee_cents")
+  totalCents       Int    @map("total_cents")
+  currency         String @default("AUD") @db.VarChar(3)
+
+  trackingNumber String?   @map("tracking_number") @db.VarChar(50)
+  shippedAt      DateTime? @map("shipped_at")
+  deliveredAt    DateTime? @map("delivered_at")
+
+  // Idempotency key = the Stripe Checkout Session id. A webhook retry for
+  // the same session is a safe no-op (see api/stripe-webhook.ts).
+  idempotencyKey String @unique @map("idempotency_key") @db.VarChar(200)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  items   OrderItem[]
+  payment Payment?
+
+  @@index([customerId], map: "orders_customer_idx")
+  @@map("orders")
+  @@schema("ajer_haus")
+}
+
+model OrderItem {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId        String  @db.Uuid @map("order_id")
+  order          Order   @relation(fields: [orderId], references: [id])
+  productId      String  @db.Uuid @map("product_id")
+  product        Product @relation(fields: [productId], references: [id])
+  batchId        String  @db.Uuid @map("batch_id")
+  batch          Batch   @relation(fields: [batchId], references: [id])
+  quantity       Int
+  unitPriceCents Int     @map("unit_price_cents")
+  lineTotalCents Int     @map("line_total_cents")
+
+  @@map("order_items")
+  @@schema("ajer_haus")
+}
+
+model Payment {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId           String        @unique @db.Uuid @map("order_id")
+  order             Order         @relation(fields: [orderId], references: [id])
+  providerPaymentId String        @unique @map("provider_payment_id") @db.VarChar(200) // Stripe PaymentIntent id
+  status            PaymentStatus @default(SUCCEEDED)
+  amountCents       Int           @map("amount_cents")
+  currency          String        @default("AUD") @db.VarChar(3)
+  rawPayload        Json?         @map("raw_payload")
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  @@map("payments")
+  @@schema("ajer_haus")
+}
+
+// ---------------------------------------------------------------------------
+// Subscribers — general newsletter AND per-scent "notify me" (productId +
+// notifiedAt), same dual-purpose model Unstitch uses rather than two
+// parallel signup lists.
+// ---------------------------------------------------------------------------
+
+model Subscriber {
+  id             Int       @id @default(autoincrement())
+  name           String?
+  email          String    @unique
+  source         String?   // e.g. "notify-me", "newsletter"
+  productId      String?   @db.Uuid @map("product_id")
+  product        Product?  @relation(fields: [productId], references: [id])
+  notifiedAt     DateTime? @map("notified_at")
+  unsubscribedAt DateTime? @map("unsubscribed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  @@map("subscribers")
+  @@schema("ajer_haus")
+}

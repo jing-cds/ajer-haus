@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { PLACES } from '../data/places.js';
-import { FAQ, PAYMENT_URL, DELIVERY_FEE, FREE_OVER, MAX_QTY, CONTACT_EMAIL } from '../data/shop.js';
+import { FAQ, PRODUCT_SLUG, DELIVERY_FEE, FREE_OVER, MAX_QTY, CONTACT_EMAIL } from '../data/shop.js';
 import { readCart, writeCart, CART_EVENT } from '../data/cart.js';
+import { isVictorianPostcode } from '../lib/delivery.js';
 
 const P = PLACES[0];
 const money = (n) => '$' + n.toFixed(2);
@@ -49,9 +50,9 @@ function Cart({ open, onClose, cart }) {
   const ref = useRef(null);
   useDialogChrome(open, onClose, ref);
   const [method, setMethod] = useState('delivery');
-  const [f, setF] = useState({ name: '', email: '', address: '', postcode: '' });
+  const [f, setF] = useState({ name: '', email: '', address: '', suburb: '', postcode: '', marketingOptIn: false });
   const [err, setErr] = useState({});
-  const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const set = (k) => (e) => setF((o) => ({ ...o, [k]: e.target.value }));
   const qty = cart.qty;
   const sub = qty * P.price;
@@ -61,21 +62,47 @@ function Cart({ open, onClose, cart }) {
 
   const setQty = (n) => writeCart({ id: 'shrine', qty: Math.max(0, Math.min(MAX_QTY, n)) });
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     const x = {};
     if (!f.name.trim()) x.name = 'Please add your name.';
     if (!/^\S+@\S+\.\S+$/.test(f.email)) x.email = 'Please add a valid email.';
     if (method === 'delivery') {
       if (!f.address.trim()) x.address = 'Please add your street address.';
-      if (!/^3\d{3}$/.test(f.postcode.trim())) x.postcode = 'We deliver within Victoria only (postcodes 3000–3999).';
+      if (!f.suburb.trim()) x.suburb = 'Please add your suburb.';
+      if (!isVictorianPostcode(f.postcode.trim())) x.postcode = 'We deliver within Victoria only (postcodes 3000–3999).';
     }
     setErr(x);
     if (Object.keys(x).length) return;
-    if (PAYMENT_URL) {
-      const q = new URLSearchParams({ qty, prefilled_email: f.email, method });
-      window.location.href = PAYMENT_URL + (PAYMENT_URL.includes('?') ? '&' : '?') + q.toString();
-    } else setDone(true);
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: PRODUCT_SLUG,
+          quantity: qty,
+          name: f.name.trim(),
+          email: f.email.trim(),
+          method,
+          address: method === 'delivery' ? f.address.trim() : undefined,
+          suburb: method === 'delivery' ? f.suburb.trim() : undefined,
+          postcode: method === 'delivery' ? f.postcode.trim() : undefined,
+          marketingOptIn: f.marketingOptIn,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr({ form: data.error || 'Something went wrong. Please try again.' });
+        setSubmitting(false);
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setErr({ form: 'Something went wrong. Please check your connection and try again.' });
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -86,13 +113,7 @@ function Cart({ open, onClose, cart }) {
           <button ref={ref} type="button" className="ovX" aria-label="Close cart" onClick={onClose}>✕</button>
         </div>
         <div className="cdScroll">
-          {done ? (
-            <div className="poDone" role="status">
-              <h3>Almost there.</h3>
-              <p>Payment isn’t switched on yet, so your order of {qty} × {P.name} ({money(total)}) hasn’t been taken. We’ll email {f.email} when pre-orders open.</p>
-              <button type="button" className="btn2" onClick={() => setDone(false)}>Back to cart</button>
-            </div>
-          ) : qty === 0 ? (
+          {qty === 0 ? (
             <div className="cdEmpty">
               <p>Your cart is empty.</p>
               <a className="btn" href="/collection#order" onClick={onClose}>See the Shrine of Remembrance</a>
@@ -129,16 +150,23 @@ function Cart({ open, onClose, cart }) {
               {method === 'delivery' && (
                 <>
                   <div className="poRow"><label htmlFor="cd-addr">Street address</label><input id="cd-addr" autoComplete="street-address" value={f.address} onChange={set('address')} aria-invalid={!!err.address} />{err.address && <span className="poErr">{err.address}</span>}</div>
+                  <div className="poRow"><label htmlFor="cd-suburb">Suburb</label><input id="cd-suburb" autoComplete="address-level2" value={f.suburb} onChange={set('suburb')} aria-invalid={!!err.suburb} />{err.suburb && <span className="poErr">{err.suburb}</span>}</div>
                   <div className="poRow"><label htmlFor="cd-pc">Postcode</label><input id="cd-pc" inputMode="numeric" maxLength={4} autoComplete="postal-code" value={f.postcode} onChange={set('postcode')} aria-invalid={!!err.postcode} />{err.postcode && <span className="poErr">{err.postcode}</span>}</div>
                 </>
               )}
+
+              <label className="poRow poCheck">
+                <input type="checkbox" checked={f.marketingOptIn} onChange={(e) => setF((o) => ({ ...o, marketingOptIn: e.target.checked }))} />
+                Keep me posted on new places and restocks
+              </label>
 
               <dl className="poSum">
                 <div><dt>Subtotal</dt><dd>{money(sub)}</dd></div>
                 <div><dt>{method === 'pickup' ? 'Pickup' : 'Delivery'}</dt><dd>{ship ? money(ship) : 'Free'}</dd></div>
                 <div className="tot"><dt>Total (AUD)</dt><dd>{money(total)}</dd></div>
               </dl>
-              <button type="submit" className="btn">Continue to payment</button>
+              {err.form && <p className="poErr" role="alert">{err.form}</p>}
+              <button type="submit" className="btn" disabled={submitting}>{submitting ? 'Redirecting…' : 'Continue to payment'}</button>
               <p className="cdFine">By continuing you agree to our <a className="tlink" href="/terms">Terms</a> and <a className="tlink" href="/privacy">Privacy Policy</a>.</p>
             </form>
           )}
